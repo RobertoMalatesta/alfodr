@@ -4,6 +4,7 @@
 #include <Vector3.h>
 
 #include "renderer.h"
+#include "buffer.h"
 
 const int width = 640;
 const int height = 480;
@@ -27,11 +28,19 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	//-----
-
+	
 	alfodr::Renderer rend;
 	alfodr::renderer::initialize(rend, width, height);
 
-	alfodr::renderer::rasterize(rend, alfar::vector3::create(10, 10, 0), alfar::vector3::create(10,100,0), alfar::vector3::create(100,100,0));
+	ID buff = alfodr::buffer::create(rend._bufferData, 3 * sizeof(alfar::Vector3));
+
+	alfar::Vector3 tri[3] = {{10, 200, 0}, {400, 300}, {550, 50}};
+
+	alfodr::buffer::upload(rend._bufferData, buff, tri, 3 * sizeof(alfar::Vector3), sizeof(alfar::Vector3));
+
+
+	alfodr::renderer::bindBuffer(rend, alfodr::VERTEXDATA, buff);
+	alfodr::renderer::draw(rend, 3);
 
 	//-----
 

@@ -22,16 +22,21 @@ namespace alfodr
 		uint32 _dataOffset;
 	};
 
+	//Manage all buffer, used throught renderer usually.
+	struct BufferManager
+	{
+		uint8* _bufferMemory;
+		uint32 _bufferSize;
+		ObjectManager<Buffer, DEFAULT_MAX_BUFFER> _buffers;
+	};
+
 
 	namespace buffer
 	{
-		extern uint8* _gBufferMemory;
-		extern ObjectManager<Buffer, DEFAULT_MAX_BUFFER> _gBuffers;
-
-		void initSubsystem();
+		void initManager(BufferManager& manager);
 
 		//create a buffer allocating size.
-		ID create(uint32 size);
-		void upload(const Buffer& b, void* data, uint32 dataSize, uint16 stride = 0);
+		ID create(BufferManager& manager, uint32 size);
+		void upload(BufferManager& manager, ID buffer, void* data, uint32 dataSize, uint16 stride = 0);
 	}
 }

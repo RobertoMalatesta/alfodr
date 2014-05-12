@@ -3,54 +3,64 @@
 
 using namespace alfodr;
 
-
-ObjectManager<Buffer, DEFAULT_MAX_BUFFER> buffer::_gBuffers;
-uint8* buffer::_gBufferMemory;
-
-uint32 _gBufferMemorySize = 1024*1024;
-
-
-void buffer::initSubsystem()
+/*
+* The buffer is organize as follow :
+* size - data.
+* 32bit are appended to each buffer to stock it's size. A negative value (highest bit to 1) 
+* mean that the space behind is free (of said size). 0 mark the end of buffer.
+* that way we can minimize fragmentation
+*/
+void buffer::initManager(BufferManager& manager)
 {
-	_gBufferMemory = (uint8*)malloc(_gBufferMemorySize);
-
-	//when allocating space in the buffer, we append the size before on 31bits. 
-	//highest bit tell if it's free (0) or allocated (1)
-	memset(_gBufferMemory, 0, _gBufferMemorySize);
+	manager._bufferSize = 1024*1024;
+	manager._bufferMemory = (uint8*)malloc(manager._bufferSize);
+	memset(manager._bufferMemory, 0, manager._bufferSize);
 }
 
 //----------------------------
 
-ID buffer::create(uint32 size)
+ID buffer::create(BufferManager& manager, uint32 size)
 {
-	Buffer& b = _gBuffers.addAndGet();
-
-	b.size = 32;
+	Buffer& b = manager._buffers.addAndGet();
 
 	//find next free space fiting it in the raw memory
 	uint32 offset = 0;
 
-	while( (*((uint32*)(_gBufferMemory + offset)) & 0x80000000) != 0 && offset < _gBufferMemorySize)
+	while( *((int32*)(manager._bufferMemory + offset)) > 0 && offset < manager._bufferSize)
 	{//while we don't reach a free space or the end (full buffer)
-		uint32 info = *((uint32*)_gBufferMemory+offset);
-		info = (info << 1) >> 1; //remove the "free" bit
-
-		offset += info;
+		offset += *((int32*)(manager._bufferMemory + offset)) + 4;
 	}
 
-	while(offset + size >= _gBufferMemorySize)
-	{
-		uint32 newsize = _gBufferMemorySize + 1024*1024;
+	while(offset + size >= manager._bufferSize)
+	{//expand the buffer until we can fit the wanted size
+		uint32 newsize = manager._bufferSize + 1024*1024;
 		uint8* newmem = (uint8*)malloc(newsize);
-		memcpy(newmem, _gBufferMemory, _gBufferMemorySize);
-		memset(newmem + _gBufferMemorySize, 0, newsize - _gBufferMemorySize);
+		memcpy(newmem, manager._bufferMemory, manager._bufferSize);
+		memset(newmem + manager._bufferSize, 0, newsize - manager._bufferSize);
 
-		free(_gBufferMemory);
+		free(manager._bufferMemory);
 		
-		_gBufferMemory = newmem;
-		_gBufferMemorySize = newsize;
+		manager._bufferMemory = newmem;
+		manager._bufferSize = newsize;
 	}
 
-	_gBufferMemory[offset] = size;
+	*((uint32*)(manager._bufferMemory + offset)) = size;
+	
 
+	b.size = size;
+	b.stride = 0;
+	b._dataOffset = offset + 4;
+
+	return b.id;
+}
+
+void buffer::upload(BufferManager& manager, ID buffer, void* data, uint32 dataSize, uint16 stride)
+{
+	Buffer& b = manager._buffers.lookup(buffer);
+
+	_ASSERT(b.size >= dataSize);
+
+	memcpy(manager._bufferMemory + b._dataOffset, data, dataSize);
+
+	b.stride = stride;
 }

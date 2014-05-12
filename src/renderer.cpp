@@ -2,8 +2,24 @@
 #include <functions.h>
 #include <memory>
 
+#include <thread>
+
+#include <vector4.h>
+
 using namespace alfodr;
 using namespace alfar;
+
+
+//--------- INTERNAL FUNCTION
+
+void fixFunctionVertex(void* vertData, void* constants, VertexOutput* output)
+{
+	alfar::Vector3 v = *((alfar::Vector3*)vertData);
+
+	output->position = alfar::vector4::create(v);
+}
+
+//---------------------------
 
 void renderer::initialize(Renderer& rend, int w, int h)
 {
@@ -12,9 +28,25 @@ void renderer::initialize(Renderer& rend, int w, int h)
 	rend._internalBuffer = (ARGB*)malloc(w*h*sizeof(ARGB));
 
 	memset(rend._internalBuffer, 0, w*h*sizeof(ARGB));
+
+	rend.boundVertexFunc = fixFunctionVertex;
+
+	buffer::initManager(rend._bufferData);
 }
 
-void renderer::rasterize(Renderer& rend, const alfar::Vector3 v1, const alfar::Vector3 v2, const alfar::Vector3 v3)
+void renderer::bindBuffer(Renderer& rend, EBindTarget target, ID buffer)
+{
+	switch(target)
+	{
+	case VERTEXDATA:
+		rend._vertexBufferBound = buffer;
+		break;
+	default:
+		break;
+	};
+}
+
+void renderer::rasterize(Renderer& rend, const alfar::Vector4 v1, const alfar::Vector4 v2, const alfar::Vector4 v3)
 {
 	 // 28.4 fixed-point coordinates
     const int Y1 = iround(16.0f * v1.y);
@@ -146,4 +178,26 @@ void renderer::rasterize(Renderer& rend, const alfar::Vector3 v1, const alfar::V
             }
         }
     }
+}
+
+void renderer::draw(Renderer& rend, const uint32 vertexCount)
+{
+	VertexOutput* outputs = (VertexOutput*)malloc(vertexCount * sizeof(VertexOutput));
+	Buffer& b = rend._bufferData._buffers.lookup(rend._vertexBufferBound);
+
+	for(int i = 0; i < vertexCount; i+=3)
+	{
+		std::thread first(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*i), (void*)0, outputs + 3*i);
+		std::thread second(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*(i+1)), (void*)0, outputs + 3*i + 1 );
+		std::thread third(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*(i+2)), (void*)0, outputs + 3*i +2 );
+
+		first.join();
+		second.join();
+		third.join();
+
+		renderer::rasterize(rend, outputs[i].position, outputs[i+1].position, outputs[i+2].position);
+	}
+
+
+	free(outputs);
 }
