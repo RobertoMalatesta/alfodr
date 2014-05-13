@@ -35,6 +35,7 @@ namespace alfodr
 	enum EBindTarget
 	{
 		VERTEXDATA,
+		INDEXDATA,
 		CONSTANTDATA
 	};
 
@@ -47,6 +48,7 @@ namespace alfodr
 
 		//this will be send to the "vertex" function, splitting @ strides
 		ID _vertexBufferBound;
+		ID _indexBufferBound;
 		ID _constantBufferBound;
 
 		vertFunc boundVertexFunc;
@@ -55,12 +57,14 @@ namespace alfodr
 	namespace renderer
 	{
 		void initialize(Renderer& rend, int w, int h);
-		void rasterize(Renderer& rend, const alfar::Vector4 v1, const alfar::Vector4 v2, const alfar::Vector4 v3);
+		void rasterize(Renderer& rend, const VertexOutput vertex1, const VertexOutput vertex2, const VertexOutput vertex3);
 
 		void bindBuffer(Renderer& rend, EBindTarget target, ID buffer);
 
 		void draw(Renderer& rend, const uint32 vertexCount);
 
 		//-----------------------------------
+
+		void clear(Renderer& rend, ARGB value);
 	}
 }

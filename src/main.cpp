@@ -3,6 +3,7 @@
 
 #include <mat4x4.h>
 #include <vector3.h>
+#include <quaternion.h>
 
 #include "renderer.h"
 #include "buffer.h"
@@ -29,6 +30,11 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	//-----
+
+	alfodr::ARGB black;
+	black.argb = 0x0;
+
+	alfar::Quaternion rot = alfar::quaternion::identity();
 	
 	alfodr::Renderer rend;
 	alfodr::renderer::initialize(rend, width, height);
@@ -41,9 +47,9 @@ int main(int argc, char** argv)
 
 	ID constantBuffer = alfodr::buffer::create(rend._bufferData, 3 * sizeof(alfar::Matrix4x4), 0);
 
-	alfar::Matrix4x4 model = alfar::mat4x4::identity();
+	alfar::Matrix4x4 model = alfar::quaternion::toMat4x4(rot);
 	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0,0,-5.f), alfar::vector3::create(0,0,0), alfar::vector3::create(0,1,0));
-	alfar::Matrix4x4 projection  = alfar::mat4x4::persp(60.0*3.14f/180.0f, 640.0f/480.0f, 0.001f, 100.0f);
+	alfar::Matrix4x4 projection  = alfar::mat4x4::persp(60.0f*3.14f/180.0f, 640.0f/480.0f, 0.001f, 100.0f);
 
 	alfar::Matrix4x4 mat[3] = {model,view,projection};
 
@@ -52,7 +58,6 @@ int main(int argc, char** argv)
 
 	alfodr::renderer::bindBuffer(rend, alfodr::VERTEXDATA, buff);
 	alfodr::renderer::bindBuffer(rend, alfodr::CONSTANTDATA, constantBuffer);
-	alfodr::renderer::draw(rend, 3);
 
 	//-----
 
@@ -60,6 +65,13 @@ int main(int argc, char** argv)
 
 	bool quit = false;
 	SDL_Event e;
+
+	uint32 startTime = SDL_GetTicks();
+	uint32 lastFrame = startTime;
+	uint32 lastFpsDisplay = 0;
+	uint32 fpsNumber = 0;
+
+	float deltaTime = 0.0f;
 
 	while (!quit)
 	{
@@ -72,10 +84,36 @@ int main(int argc, char** argv)
 			}
 		}
 
+		rot = alfar::quaternion::mul(alfar::quaternion::axisAngle(alfar::vector3::create(0,1,0), (25.0f * 3.14f / 180.0f) * deltaTime), rot);
+		model  = alfar::quaternion::toMat4x4(rot);
+		alfodr::buffer::upload(rend._bufferData, constantBuffer, &model, sizeof(alfar::Matrix4x4));
+
+		alfodr::renderer::clear(rend, black);
+		alfodr::renderer::draw(rend, 3);
+
 		SDL_LockSurface(screen);
 		memcpy(screen->pixels, rend._internalBuffer, width*height*4);
 		SDL_UnlockSurface(screen);
 		SDL_UpdateWindowSurface(win);
+
+		int time = SDL_GetTicks() - startTime;
+		int delta = time - lastFrame;
+
+		lastFpsDisplay += delta;
+		fpsNumber += 1;
+
+		lastFrame = time;
+
+		deltaTime = delta / 1000.0f;
+
+		if(lastFpsDisplay >= 1000)
+		{
+			system("cls");
+			std::cout<<fpsNumber<<" FPS ; "<<1.0f/fpsNumber<<" ms"<<std::endl; 
+
+			fpsNumber = 0.0f;
+			lastFpsDisplay = 0;
+		}
 	}
 
 	SDL_DestroyWindow(win);

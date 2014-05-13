@@ -50,6 +50,9 @@ void renderer::bindBuffer(Renderer& rend, EBindTarget target, ID buffer)
 	case VERTEXDATA:
 		rend._vertexBufferBound = buffer;
 		break;
+	case INDEXDATA:
+		rend._indexBufferBound = buffer;
+		break;
 	case CONSTANTDATA:
 		rend._constantBufferBound = buffer;
 		break;
@@ -58,10 +61,31 @@ void renderer::bindBuffer(Renderer& rend, EBindTarget target, ID buffer)
 	};
 }
 
-void renderer::rasterize(Renderer& rend, const alfar::Vector4 v1, const alfar::Vector4 v2, const alfar::Vector4 v3)
+void renderer::clear(Renderer& rend, ARGB value)
 {
+	for(int i = 0; i < rend.w*rend.h; ++i)
+	{
+		rend._internalBuffer[i] = value;
+	}
+}
+
+void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const VertexOutput vertex2, const VertexOutput vertex3)
+{
+
+	Vector3 v1 = {vertex1.position.x/vertex1.position.w, vertex1.position.y/vertex1.position.w, vertex1.position.z/vertex1.position.w};
+	Vector3 v2 = {vertex2.position.x/vertex2.position.w, vertex2.position.y/vertex2.position.w, vertex2.position.z/vertex2.position.w};
+	Vector3 v3 = {vertex3.position.x/vertex3.position.w, vertex3.position.y/vertex3.position.w, vertex3.position.z/vertex3.position.w};
+
+	v1.x = (v1.x + 0.5f) * rend.w;
+	v2.x = (v2.x + 0.5f) * rend.w;
+	v3.x = (v3.x + 0.5f) * rend.w;
+
+	v1.y = rend.h - (v1.y + 0.5f) * rend.h;
+	v2.y = rend.h - (v2.y + 0.5f) * rend.h;
+	v3.y = rend.h - (v3.y + 0.5f) * rend.h;
+
 	 // 28.4 fixed-point coordinates
-    const int Y1 = iround(16.0f * v1.y);
+	const int Y1 = iround(16.0f * v1.y);
     const int Y2 = iround(16.0f * v2.y);
     const int Y3 = iround(16.0f * v3.y);
 
@@ -214,7 +238,7 @@ void renderer::draw(Renderer& rend, const uint32 vertexCount)
 		second.join();
 		third.join();
 
-		renderer::rasterize(rend, outputs[i].position, outputs[i+1].position, outputs[i+2].position);
+		renderer::rasterize(rend, outputs[i], outputs[i+1], outputs[i+2]);
 	}
 
 
