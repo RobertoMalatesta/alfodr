@@ -4,6 +4,7 @@
 
 #include <thread>
 
+#include <mat4x4.h>
 #include <vector4.h>
 
 using namespace alfodr;
@@ -14,9 +15,17 @@ using namespace alfar;
 
 void fixFunctionVertex(void* vertData, void* constants, VertexOutput* output)
 {
-	alfar::Vector3 v = *((alfar::Vector3*)vertData);
+	alfar::Vector4 v = alfar::vector4::create(*((alfar::Vector3*)vertData));
 
-	output->position = alfar::vector4::create(v);
+	alfar::Matrix4x4 model = *(((alfar::Matrix4x4*)constants));
+	alfar::Matrix4x4 view = *(((alfar::Matrix4x4*)constants) + 1);
+	alfar::Matrix4x4 projection = *(((alfar::Matrix4x4*)constants) + 2);
+
+	v = alfar::vector4::mul(model, v);
+	v = alfar::vector4::mul(view, v);
+	v = alfar::vector4::mul(projection, v);
+
+	output->position = v;
 }
 
 //---------------------------
@@ -40,6 +49,9 @@ void renderer::bindBuffer(Renderer& rend, EBindTarget target, ID buffer)
 	{
 	case VERTEXDATA:
 		rend._vertexBufferBound = buffer;
+		break;
+	case CONSTANTDATA:
+		rend._constantBufferBound = buffer;
 		break;
 	default:
 		break;
@@ -185,11 +197,18 @@ void renderer::draw(Renderer& rend, const uint32 vertexCount)
 	VertexOutput* outputs = (VertexOutput*)malloc(vertexCount * sizeof(VertexOutput));
 	Buffer& b = rend._bufferData._buffers.lookup(rend._vertexBufferBound);
 
+	void* constantData = NULL;
+	if(rend._constantBufferBound != 0)
+	{
+		Buffer& cdata = rend._bufferData._buffers.lookup(rend._constantBufferBound);
+		constantData = rend._bufferData._bufferMemory + cdata._dataOffset;
+	}
+
 	for(int i = 0; i < vertexCount; i+=3)
 	{
-		std::thread first(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*i), (void*)0, outputs + 3*i);
-		std::thread second(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*(i+1)), (void*)0, outputs + 3*i + 1 );
-		std::thread third(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*(i+2)), (void*)0, outputs + 3*i +2 );
+		std::thread first(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*i), constantData, outputs + 3*i);
+		std::thread second(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*(i+1)), constantData, outputs + 3*i + 1 );
+		std::thread third(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*(i+2)), constantData, outputs + 3*i +2 );
 
 		first.join();
 		second.join();

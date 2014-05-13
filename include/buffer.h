@@ -36,7 +36,7 @@ namespace alfodr
 		void initManager(BufferManager& manager);
 
 		//create a buffer allocating size.
-		ID create(BufferManager& manager, uint32 size);
-		void upload(BufferManager& manager, ID buffer, void* data, uint32 dataSize, uint16 stride = 0);
+		ID create(BufferManager& manager, uint32 size, uint16 stride = 0);
+		void upload(BufferManager& manager, ID buffer, void* data, uint32 dataSize, uint32 offset = 0);
 	}
 }

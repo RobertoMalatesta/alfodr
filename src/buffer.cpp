@@ -19,7 +19,7 @@ void buffer::initManager(BufferManager& manager)
 
 //----------------------------
 
-ID buffer::create(BufferManager& manager, uint32 size)
+ID buffer::create(BufferManager& manager, uint32 size, uint16 stride)
 {
 	Buffer& b = manager._buffers.addAndGet();
 
@@ -48,19 +48,17 @@ ID buffer::create(BufferManager& manager, uint32 size)
 	
 
 	b.size = size;
-	b.stride = 0;
+	b.stride = stride;
 	b._dataOffset = offset + 4;
 
 	return b.id;
 }
 
-void buffer::upload(BufferManager& manager, ID buffer, void* data, uint32 dataSize, uint16 stride)
+void buffer::upload(BufferManager& manager, ID buffer, void* data, uint32 dataSize, uint32 offset)
 {
 	Buffer& b = manager._buffers.lookup(buffer);
 
-	_ASSERT(b.size >= dataSize);
+	_ASSERT(b.size >= dataSize + offset);
 
-	memcpy(manager._bufferMemory + b._dataOffset, data, dataSize);
-
-	b.stride = stride;
+	memcpy(manager._bufferMemory + b._dataOffset + offset, data, dataSize);
 }

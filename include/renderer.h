@@ -34,7 +34,8 @@ namespace alfodr
 
 	enum EBindTarget
 	{
-		VERTEXDATA
+		VERTEXDATA,
+		CONSTANTDATA
 	};
 
 	struct Renderer
@@ -46,6 +47,7 @@ namespace alfodr
 
 		//this will be send to the "vertex" function, splitting @ strides
 		ID _vertexBufferBound;
+		ID _constantBufferBound;
 
 		vertFunc boundVertexFunc;
 	};
