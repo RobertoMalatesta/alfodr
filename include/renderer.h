@@ -61,7 +61,7 @@ namespace alfodr
 
 		void bindBuffer(Renderer& rend, EBindTarget target, ID buffer);
 
-		void draw(Renderer& rend, const uint32 vertexCount);
+		void draw(Renderer& rend, const uint32 primitiveCount);
 
 		//-----------------------------------
 

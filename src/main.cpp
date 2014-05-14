@@ -39,24 +39,27 @@ int main(int argc, char** argv)
 	alfodr::Renderer rend;
 	alfodr::renderer::initialize(rend, width, height);
 
-	ID buff = alfodr::buffer::create(rend._bufferData, 3 * sizeof(alfar::Vector3), sizeof(alfar::Vector3));
+	ID buff = alfodr::buffer::create(rend._bufferData, 4 * sizeof(alfar::Vector3), sizeof(alfar::Vector3));
+	ID idxBuff = alfodr::buffer::create(rend._bufferData, 6 * sizeof(uint32), sizeof(uint32));
 
-	alfar::Vector3 tri[3] = {{-1, 0, 0}, {1, 0, 0}, {0,1,0}};
+	alfar::Vector3 tri[4] = {{-1, 0, 0}, {1, 0, 0}, {0,1,0}, {0, -1, 0}};
+	alfodr::buffer::upload(rend._bufferData, buff, tri, 4 * sizeof(alfar::Vector3));
 
-	alfodr::buffer::upload(rend._bufferData, buff, tri, 3 * sizeof(alfar::Vector3));
+	uint32 idx[6] = {0,1,2,0,3,1};
+	alfodr::buffer::upload(rend._bufferData, idxBuff, idx, 6 * sizeof(uint32));
 
 	ID constantBuffer = alfodr::buffer::create(rend._bufferData, 3 * sizeof(alfar::Matrix4x4), 0);
 
 	alfar::Matrix4x4 model = alfar::quaternion::toMat4x4(rot);
-	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0,0,-5.f), alfar::vector3::create(0,0,0), alfar::vector3::create(0,1,0));
+	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0, 0,-8.f), alfar::vector3::create(0,0.f,0), alfar::vector3::create(0,1,0));
 	alfar::Matrix4x4 projection  = alfar::mat4x4::persp(60.0f*3.14f/180.0f, 640.0f/480.0f, 0.001f, 100.0f);
 
 	alfar::Matrix4x4 mat[3] = {model,view,projection};
 
 	alfodr::buffer::upload(rend._bufferData, constantBuffer, mat, 3 * sizeof(alfar::Matrix4x4));
 
-
 	alfodr::renderer::bindBuffer(rend, alfodr::VERTEXDATA, buff);
+	alfodr::renderer::bindBuffer(rend, alfodr::INDEXDATA, idxBuff);
 	alfodr::renderer::bindBuffer(rend, alfodr::CONSTANTDATA, constantBuffer);
 
 	//-----
@@ -89,7 +92,7 @@ int main(int argc, char** argv)
 		alfodr::buffer::upload(rend._bufferData, constantBuffer, &model, sizeof(alfar::Matrix4x4));
 
 		alfodr::renderer::clear(rend, black);
-		alfodr::renderer::draw(rend, 3);
+		alfodr::renderer::draw(rend, 2);
 
 		SDL_LockSurface(screen);
 		memcpy(screen->pixels, rend._internalBuffer, width*height*4);

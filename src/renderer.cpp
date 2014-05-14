@@ -174,8 +174,11 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
                 {
                     for(int ix = x; ix < x + q; ix++)
                     {
+						Vector3 bar = vector3::barycentric(v1,v2,v3, vector3::create(ix, y + iy, 0));
                         //buffer[ix] = 0x00007F00; // Green
-						rend._internalBuffer[(miny + y + iy) * rend.w + ix].b = 0xFF;
+						rend._internalBuffer[(y + iy) * rend.w + ix].r = bar.x * 0xFF;
+						rend._internalBuffer[(y + iy) * rend.w + ix].g = bar.y * 0xFF;
+						rend._internalBuffer[(y + iy) * rend.w + ix].b = bar.z * 0xFF;
                     }
 
                     //(char*&)buffer += stride;
@@ -198,8 +201,11 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
                         if(CX1 > 0 && CX2 > 0 && CX3 > 0)
                         {
                             //buffer[ix] = 0x0000007F;
+							Vector3 bar = vector3::barycentric(v1,v2,v3, vector3::create(ix, iy, 0));
 
-							rend._internalBuffer[(miny + iy) * rend.w + ix].r = 0xff;
+							rend._internalBuffer[(iy) * rend.w + ix].r = bar.x * 0xFF;
+							rend._internalBuffer[(iy) * rend.w + ix].g = bar.y * 0xFF;
+							rend._internalBuffer[(iy) * rend.w + ix].b = bar.z * 0xFF;
                         }
 
                         CX1 -= FDY12;
@@ -216,10 +222,11 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
     }
 }
 
-void renderer::draw(Renderer& rend, const uint32 vertexCount)
+void renderer::draw(Renderer& rend, const uint32 primitiveCount)
 {
-	VertexOutput* outputs = (VertexOutput*)malloc(vertexCount * sizeof(VertexOutput));
+	VertexOutput* outputs = (VertexOutput*)malloc(primitiveCount * 3 * sizeof(VertexOutput));
 	Buffer& b = rend._bufferData._buffers.lookup(rend._vertexBufferBound);
+	Buffer& idxBuffer = rend._bufferData._buffers.lookup(rend._indexBufferBound);
 
 	void* constantData = NULL;
 	if(rend._constantBufferBound != 0)
@@ -228,17 +235,21 @@ void renderer::draw(Renderer& rend, const uint32 vertexCount)
 		constantData = rend._bufferData._bufferMemory + cdata._dataOffset;
 	}
 
-	for(int i = 0; i < vertexCount; i+=3)
+	for(int i = 0; i < primitiveCount; ++i)
 	{
-		std::thread first(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*i), constantData, outputs + 3*i);
-		std::thread second(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*(i+1)), constantData, outputs + 3*i + 1 );
-		std::thread third(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*(i+2)), constantData, outputs + 3*i +2 );
+		uint32 firstVert = *(uint32*)(rend._bufferData._bufferMemory + idxBuffer._dataOffset + (i * 3) * sizeof(uint32));
+		uint32 secondVert = *(uint32*)(rend._bufferData._bufferMemory + idxBuffer._dataOffset + ((i * 3)+1) * sizeof(uint32));
+		uint32 thirdVert = *(uint32*)(rend._bufferData._bufferMemory + idxBuffer._dataOffset + ((i * 3)+2) * sizeof(uint32));
+
+		std::thread first(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*firstVert), constantData, outputs + 3*i);
+		std::thread second(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*secondVert), constantData, outputs + 3*i + 1 );
+		std::thread third(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*thirdVert), constantData, outputs + 3*i +2 );
 
 		first.join();
 		second.join();
 		third.join();
 
-		renderer::rasterize(rend, outputs[i], outputs[i+1], outputs[i+2]);
+		renderer::rasterize(rend, outputs[i*3], outputs[i*3+1], outputs[i*3+2]);
 	}
 
 

@@ -29,7 +29,7 @@ struct ManagedObject
 * ID 0 is always an empty unitialized object, so you can use 0 as the "default no-id"
 * Stocked object need to have an .id field to stock the array id.
 */
-template<typename T, uint32_t MAX_OBJECTS>
+template<typename T, uint32 MAX_OBJECTS>
 struct ObjectManager
 {
 	unsigned _num_objects;
