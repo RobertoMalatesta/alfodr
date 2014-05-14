@@ -15,7 +15,7 @@ using namespace alfar;
 
 void fixFunctionVertex(void* vertData, void* constants, VertexOutput* output)
 {
-	alfar::Vector4 v = alfar::vector4::create(*((alfar::Vector3*)vertData));
+	alfar::Vector4 v = *((alfar::Vector4*)vertData);
 
 	alfar::Matrix4x4 model = *(((alfar::Matrix4x4*)constants));
 	alfar::Matrix4x4 view = *(((alfar::Matrix4x4*)constants) + 1);
@@ -116,6 +116,14 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
     int maxx = (max3(X1, X2, X3) + 0xF) >> 4;
     int miny = (min3(Y1, Y2, Y3) + 0xF) >> 4;
     int maxy = (max3(Y1, Y2, Y3) + 0xF) >> 4;
+
+	if(minx >= rend.w || miny >= rend.h || maxx < 0 || maxy < 0)
+		return; //rect outside of screen
+
+	minx = (minx < 0 ? 0 : minx);
+	miny = (miny < 0 ? 0 : miny);
+	maxx = (maxx >= rend.w ? rend.w - 1 : maxx);
+	maxy = (maxy >= rend.h ? rend.h - 1 : maxy);
 
     // Block size, standard 8x8 (must be power of two)
     const int q = 8;
@@ -225,6 +233,8 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
 void renderer::draw(Renderer& rend, const uint32 primitiveCount)
 {
 	VertexOutput* outputs = (VertexOutput*)malloc(primitiveCount * 3 * sizeof(VertexOutput));
+	memset(outputs, 0, primitiveCount * 3 * sizeof(VertexOutput));
+
 	Buffer& b = rend._bufferData._buffers.lookup(rend._vertexBufferBound);
 	Buffer& idxBuffer = rend._bufferData._buffers.lookup(rend._indexBufferBound);
 
@@ -241,13 +251,18 @@ void renderer::draw(Renderer& rend, const uint32 primitiveCount)
 		uint32 secondVert = *(uint32*)(rend._bufferData._bufferMemory + idxBuffer._dataOffset + ((i * 3)+1) * sizeof(uint32));
 		uint32 thirdVert = *(uint32*)(rend._bufferData._bufferMemory + idxBuffer._dataOffset + ((i * 3)+2) * sizeof(uint32));
 
-		std::thread first(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*firstVert), constantData, outputs + 3*i);
+
+		rend.boundVertexFunc(rend._bufferData._bufferMemory + (b._dataOffset + b.stride*firstVert), constantData, outputs + 3*i);
+		rend.boundVertexFunc(rend._bufferData._bufferMemory + (b._dataOffset + b.stride*secondVert), constantData, outputs + 3*i + 1 );
+		rend.boundVertexFunc(rend._bufferData._bufferMemory + (b._dataOffset + b.stride*thirdVert), constantData, outputs + 3*i +2 );
+
+		/*std::thread first(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*firstVert), constantData, outputs + 3*i);
 		std::thread second(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*secondVert), constantData, outputs + 3*i + 1 );
 		std::thread third(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*thirdVert), constantData, outputs + 3*i +2 );
 
 		first.join();
 		second.join();
-		third.join();
+		third.join();*/
 
 		renderer::rasterize(rend, outputs[i*3], outputs[i*3+1], outputs[i*3+2]);
 	}

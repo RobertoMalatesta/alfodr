@@ -7,6 +7,7 @@
 
 #include "renderer.h"
 #include "buffer.h"
+#include "helpers.h"
 
 const int width = 640;
 const int height = 480;
@@ -31,6 +32,11 @@ int main(int argc, char** argv)
 	}
 	//-----
 
+	alfar::Vector4* verts;
+	uint32* indices;
+	uint32 vertNb, indicesNb, strides;
+	alfodr::meshFromFile("test/simplecube.obj", vertNb, indicesNb, verts, indices, strides);
+
 	alfodr::ARGB black;
 	black.argb = 0x0;
 
@@ -39,19 +45,23 @@ int main(int argc, char** argv)
 	alfodr::Renderer rend;
 	alfodr::renderer::initialize(rend, width, height);
 
-	ID buff = alfodr::buffer::create(rend._bufferData, 4 * sizeof(alfar::Vector3), sizeof(alfar::Vector3));
-	ID idxBuff = alfodr::buffer::create(rend._bufferData, 6 * sizeof(uint32), sizeof(uint32));
+	ID buff = alfodr::buffer::create(rend._bufferData, vertNb * strides, strides);
+	ID idxBuff = alfodr::buffer::create(rend._bufferData, indicesNb * sizeof(uint32), sizeof(uint32));
 
-	alfar::Vector3 tri[4] = {{-1, 0, 0}, {1, 0, 0}, {0,1,0}, {0, -1, 0}};
-	alfodr::buffer::upload(rend._bufferData, buff, tri, 4 * sizeof(alfar::Vector3));
+	//alfar::Vector3 tri[4] = {{-1, 0, 0}, {1, 0, 0}, {0,1,0}, {0, -1, 0}};
+	//alfodr::buffer::upload(rend._bufferData, buff, tri, 4 * sizeof(alfar::Vector3));
+	alfodr::buffer::upload(rend._bufferData, buff, verts, vertNb * sizeof(alfar::Vector4));
 
-	uint32 idx[6] = {0,1,2,0,3,1};
-	alfodr::buffer::upload(rend._bufferData, idxBuff, idx, 6 * sizeof(uint32));
+	//uint32 idx[6] = {0,1,2,0,3,1};
+	alfodr::buffer::upload(rend._bufferData, idxBuff, indices, indicesNb * sizeof(uint32));
+
+	free(indices);
+	free(verts);
 
 	ID constantBuffer = alfodr::buffer::create(rend._bufferData, 3 * sizeof(alfar::Matrix4x4), 0);
 
 	alfar::Matrix4x4 model = alfar::quaternion::toMat4x4(rot);
-	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0, 0,-8.f), alfar::vector3::create(0,0.f,0), alfar::vector3::create(0,1,0));
+	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0, 0,-2.f), alfar::vector3::create(0,0.f,0), alfar::vector3::create(0,1,0));
 	alfar::Matrix4x4 projection  = alfar::mat4x4::persp(60.0f*3.14f/180.0f, 640.0f/480.0f, 0.001f, 100.0f);
 
 	alfar::Matrix4x4 mat[3] = {model,view,projection};
@@ -92,7 +102,7 @@ int main(int argc, char** argv)
 		alfodr::buffer::upload(rend._bufferData, constantBuffer, &model, sizeof(alfar::Matrix4x4));
 
 		alfodr::renderer::clear(rend, black);
-		alfodr::renderer::draw(rend, 2);
+		alfodr::renderer::draw(rend, indicesNb/3);
 
 		SDL_LockSurface(screen);
 		memcpy(screen->pixels, rend._internalBuffer, width*height*4);
@@ -112,7 +122,7 @@ int main(int argc, char** argv)
 		if(lastFpsDisplay >= 1000)
 		{
 			system("cls");
-			std::cout<<fpsNumber<<" FPS ; "<<1.0f/fpsNumber<<" ms"<<std::endl; 
+			std::cout<<fpsNumber<<" FPS ; "<<1000.0f/fpsNumber<<" ms"<<std::endl; 
 
 			fpsNumber = 0.0f;
 			lastFpsDisplay = 0;
