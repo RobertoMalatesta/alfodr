@@ -21,6 +21,8 @@ namespace alfodr
 	//the default impl using as simple input
 	typedef void (*vertFunc)(void* vertData, void* constants, VertexOutput* output);
 
+	typedef void(*pixFunc)(VertexOutput* input, void* data,	alfar::Vector4* output);
+
 
 	union ARGB
 	{
@@ -52,6 +54,7 @@ namespace alfodr
 		ID _constantBufferBound;
 
 		vertFunc boundVertexFunc;
+		pixFunc boundPixFunc;
 	};
 
 	namespace renderer

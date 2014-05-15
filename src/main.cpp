@@ -32,10 +32,10 @@ int main(int argc, char** argv)
 	}
 	//-----
 
-	alfar::Vector4* verts;
+	alfodr::SimpleVertex* verts;
 	uint32* indices;
-	uint32 vertNb, indicesNb, strides;
-	alfodr::meshFromFile("test/simplecube.obj", vertNb, indicesNb, verts, indices, strides);
+	uint32 vertNb, indicesNb;
+	alfodr::meshFromFile("test/capsule.obj", vertNb, indicesNb, verts, indices);
 
 	alfodr::ARGB black;
 	black.argb = 0x0;
@@ -45,12 +45,12 @@ int main(int argc, char** argv)
 	alfodr::Renderer rend;
 	alfodr::renderer::initialize(rend, width, height);
 
-	ID buff = alfodr::buffer::create(rend._bufferData, vertNb * strides, strides);
+	ID buff = alfodr::buffer::create(rend._bufferData, vertNb * sizeof(alfodr::SimpleVertex), sizeof(alfodr::SimpleVertex));
 	ID idxBuff = alfodr::buffer::create(rend._bufferData, indicesNb * sizeof(uint32), sizeof(uint32));
 
 	//alfar::Vector3 tri[4] = {{-1, 0, 0}, {1, 0, 0}, {0,1,0}, {0, -1, 0}};
 	//alfodr::buffer::upload(rend._bufferData, buff, tri, 4 * sizeof(alfar::Vector3));
-	alfodr::buffer::upload(rend._bufferData, buff, verts, vertNb * sizeof(alfar::Vector4));
+	alfodr::buffer::upload(rend._bufferData, buff, verts, vertNb * sizeof(alfodr::SimpleVertex));
 
 	//uint32 idx[6] = {0,1,2,0,3,1};
 	alfodr::buffer::upload(rend._bufferData, idxBuff, indices, indicesNb * sizeof(uint32));
@@ -61,7 +61,7 @@ int main(int argc, char** argv)
 	ID constantBuffer = alfodr::buffer::create(rend._bufferData, 3 * sizeof(alfar::Matrix4x4), 0);
 
 	alfar::Matrix4x4 model = alfar::quaternion::toMat4x4(rot);
-	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0, 0,-2.f), alfar::vector3::create(0,0.f,0), alfar::vector3::create(0,1,0));
+	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0, 0,-5.0f), alfar::vector3::create(0,0.f,0), alfar::vector3::create(0,1,0));
 	alfar::Matrix4x4 projection  = alfar::mat4x4::persp(60.0f*3.14f/180.0f, 640.0f/480.0f, 0.001f, 100.0f);
 
 	alfar::Matrix4x4 mat[3] = {model,view,projection};

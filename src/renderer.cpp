@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "helpers.h"
 #include <functions.h>
 #include <memory>
 
@@ -15,17 +16,51 @@ using namespace alfar;
 
 void fixFunctionVertex(void* vertData, void* constants, VertexOutput* output)
 {
-	alfar::Vector4 v = *((alfar::Vector4*)vertData);
+	SimpleVertex v = *((SimpleVertex*)vertData);
+	//alfar::Vector4 v = *((alfar::Vector4*)vertData);
 
 	alfar::Matrix4x4 model = *(((alfar::Matrix4x4*)constants));
 	alfar::Matrix4x4 view = *(((alfar::Matrix4x4*)constants) + 1);
 	alfar::Matrix4x4 projection = *(((alfar::Matrix4x4*)constants) + 2);
 
-	v = alfar::vector4::mul(model, v);
-	v = alfar::vector4::mul(view, v);
-	v = alfar::vector4::mul(projection, v);
+	v.pos = alfar::vector4::mul(model, v.pos);
+	v.pos = alfar::vector4::mul(view, v.pos);
+	v.pos = alfar::vector4::mul(projection, v.pos);
 
-	output->position = v;
+	output->position = v.pos;
+	output->interpolant1 = v.uv;
+	output->interpolant2 = v.normal;
+}
+
+void FixFunctionPixel(VertexOutput* input, void* data, Vector4* output)
+{
+	alfar::Vector4 uv = input->interpolant1;
+
+	*output = uv;
+}
+
+
+void thread_handleInBlock(Renderer& rend, int x, int y, Vector3 v1, Vector3 v2, Vector3 v3, VertexOutput* vs)
+{
+	VertexOutput v;
+	Vector4 output;
+	Vector3 bar = vector3::barycentric(v1,v2,v3, vector3::create(x, y, 0));
+
+	v.position = vector4::interpolatedFromBarycentric(vs[0].position, vs[1].position, vs[2].position, bar);
+	v.interpolant1 = vector4::interpolatedFromBarycentric(vs[0].interpolant1, vs[1].interpolant1, vs[2].interpolant1, bar);
+	v.interpolant2 = vector4::interpolatedFromBarycentric(vs[0].interpolant2, vs[1].interpolant2, vs[2].interpolant2, bar);
+	v.interpolant3 = vector4::interpolatedFromBarycentric(vs[0].interpolant3, vs[1].interpolant3, vs[2].interpolant3, bar);
+
+	rend.boundPixFunc(&v, NULL, &output);
+
+	rend._internalBuffer[y * rend.w + x].r = output.x * 0xFF;
+	rend._internalBuffer[y * rend.w + x].g = output.y * 0xFF;
+	rend._internalBuffer[y * rend.w + x].b = output.z * 0xFF;
+}
+
+void thread_handleOnEdge(Renderer& rend, int minX, int minY, int q, Vector3 v1, Vector3 v2, Vector3 v3, VertexOutput* vs)
+{
+
 }
 
 //---------------------------
@@ -39,6 +74,7 @@ void renderer::initialize(Renderer& rend, int w, int h)
 	memset(rend._internalBuffer, 0, w*h*sizeof(ARGB));
 
 	rend.boundVertexFunc = fixFunctionVertex;
+	rend.boundPixFunc = FixFunctionPixel;
 
 	buffer::initManager(rend._bufferData);
 }
@@ -71,6 +107,7 @@ void renderer::clear(Renderer& rend, ARGB value)
 
 void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const VertexOutput vertex2, const VertexOutput vertex3)
 {
+	VertexOutput vs[3] = {vertex1, vertex2, vertex3};
 
 	Vector3 v1 = {vertex1.position.x/vertex1.position.w, vertex1.position.y/vertex1.position.w, vertex1.position.z/vertex1.position.w};
 	Vector3 v2 = {vertex2.position.x/vertex2.position.w, vertex2.position.y/vertex2.position.w, vertex2.position.z/vertex2.position.w};
@@ -178,19 +215,13 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
             // Accept whole block when totally covered
             if(a == 0xF && b == 0xF && c == 0xF)
             {
-                for(int iy = 0; iy < q; iy++)
-                {
-                    for(int ix = x; ix < x + q; ix++)
-                    {
-						Vector3 bar = vector3::barycentric(v1,v2,v3, vector3::create(ix, y + iy, 0));
-                        //buffer[ix] = 0x00007F00; // Green
-						rend._internalBuffer[(y + iy) * rend.w + ix].r = bar.x * 0xFF;
-						rend._internalBuffer[(y + iy) * rend.w + ix].g = bar.y * 0xFF;
-						rend._internalBuffer[(y + iy) * rend.w + ix].b = bar.z * 0xFF;
-                    }
-
-                    //(char*&)buffer += stride;
-                }
+				for(int iy = y; iy < y + q; iy++)
+				{
+					for(int ix = x; ix < x + q; ix++)
+					{
+						thread_handleInBlock(rend, ix, iy, v1,v2,v3, vs);
+					}
+				}
             }
             else
             {
@@ -208,12 +239,7 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
                     {
                         if(CX1 > 0 && CX2 > 0 && CX3 > 0)
                         {
-                            //buffer[ix] = 0x0000007F;
-							Vector3 bar = vector3::barycentric(v1,v2,v3, vector3::create(ix, iy, 0));
-
-							rend._internalBuffer[(iy) * rend.w + ix].r = bar.x * 0xFF;
-							rend._internalBuffer[(iy) * rend.w + ix].g = bar.y * 0xFF;
-							rend._internalBuffer[(iy) * rend.w + ix].b = bar.z * 0xFF;
+							thread_handleInBlock(rend, ix, iy, v1,v2,v3, vs);
                         }
 
                         CX1 -= FDY12;
