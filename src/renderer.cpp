@@ -29,14 +29,16 @@ void fixFunctionVertex(void* vertData, void* constants, VertexOutput* output)
 
 	output->position = v.pos;
 	output->interpolant1 = v.uv;
-	output->interpolant2 = v.normal;
+	output->interpolant2 = alfar::vector4::mul(model, v.normal);
 }
 
 void FixFunctionPixel(VertexOutput* input, void* data, Vector4* output)
 {
-	alfar::Vector4 uv = input->interpolant1;
+	alfar::Vector4 normal = input->interpolant2;
 
-	*output = uv;
+	float lum = std::max(0.0f, alfar::vector4::dot(normal, alfar::vector4::normalize(alfar::vector4::create(0.5f, 0.5f, 0, 0))));
+
+	*output = alfar::vector4::add(alfar::vector4::create(0.2f,0.2f,0.2f, 0.2f), alfar::vector4::mul(alfar::vector4::create(1,1,1,1), lum));
 }
 
 
