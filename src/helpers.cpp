@@ -83,3 +83,62 @@ void alfodr::meshFromFile(const char* file, uint32& nbVert, uint32& nbFace, Simp
 		memcpy(outIndices, &faces[0], nbFace*sizeof(uint32));
 	}
 }
+
+void alfodr::meshFromMemap(const char* file, uint32& nbVert, uint32& nbFace, SimpleVertex* &outVerts, uint32* &outIndices)
+{
+	std::ifstream myfile(file, std::ios::binary);
+
+	if (myfile.is_open())
+	{
+		myfile.seekg(0, std::ios::end);
+		std::streamsize size = myfile.tellg();
+		myfile.seekg(0, std::ios::beg);
+
+		char* buffer = (char*)malloc(size);
+
+		myfile.read(buffer, size);
+
+		char* original = buffer;//save for delete
+
+		uint32 data = *(uint32*)buffer;
+		buffer += sizeof(uint32);
+
+		nbVert = *(uint32*)buffer;
+		buffer += sizeof(uint32);
+
+		outVerts = (SimpleVertex*)malloc(nbVert * sizeof(SimpleVertex));
+
+		for(int i = 0; i < nbVert; ++i)
+		{
+			outVerts[i].pos = alfar::vector4::create(*((float*)buffer), *((float*)buffer+1), *((float*)buffer+2), 1.0f);
+			buffer += 3 * sizeof(float);
+
+			if(data&0x04)
+			{//UV
+				outVerts[i].uv = alfar::vector4::create(*((float*)buffer), *((float*)buffer+1), *((float*)buffer+2), 0.0f);
+				buffer += 3 * sizeof(float);
+			}
+
+			if(data&0x2)
+			{//normal
+				outVerts[i].normal = alfar::vector4::create(*((float*)buffer), *((float*)buffer+1), *((float*)buffer+2), 0.0f);
+				buffer += 3 * sizeof(float);
+			}
+		}
+
+		nbFace = *(uint32*)buffer;
+		nbFace *= 3;
+
+		buffer += sizeof(uint32);
+		outIndices = (uint32*)malloc(nbFace * sizeof(uint32));
+
+		for(int i = 0; i < nbFace; ++i)
+		{
+			outIndices[i] = *((uint32*)buffer + 0);
+
+			buffer += sizeof(uint32);
+		}
+
+		free(original);
+	}
+}

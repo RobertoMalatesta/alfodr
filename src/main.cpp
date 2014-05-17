@@ -1,5 +1,7 @@
 #include <iostream>
 #include <SDL.h>
+#include <SDL_image.h>
+
 
 #include <mat4x4.h>
 #include <vector3.h>
@@ -30,15 +32,26 @@ int main(int argc, char** argv)
 		std::cout << "SDL_CreateWindow Error: " << SDL_GetError() << std::endl;
 		return 1;
 	}
+
+	SDL_DisplayMode mode;
+	SDL_GetWindowDisplayMode(win, &mode);
+
+	mode.format = SDL_PIXELFORMAT_RGBA8888;
+
+	SDL_SetWindowDisplayMode(win, &mode);
+
 	//-----
 
 	alfodr::SimpleVertex* verts;
 	uint32* indices;
 	uint32 vertNb, indicesNb;
-	alfodr::meshFromFile("test/capsule.obj", vertNb, indicesNb, verts, indices);
+	//alfodr::meshFromFile("test/capsule.obj", vertNb, indicesNb, verts, indices);
+	alfodr::meshFromMemap("test/Trex.mesh", vertNb, indicesNb, verts, indices);
 
-	alfodr::ARGB black;
-	black.argb = 0x0;
+	alfodr::BGRA black;
+	black.bgra = 0x0;
+	black.g = 200;
+	black.b = 255;
 
 	alfar::Quaternion rot = alfar::quaternion::identity();
 	
@@ -61,8 +74,8 @@ int main(int argc, char** argv)
 	ID constantBuffer = alfodr::buffer::create(rend._bufferData, 3 * sizeof(alfar::Matrix4x4), 0);
 
 	alfar::Matrix4x4 model = alfar::quaternion::toMat4x4(rot);
-	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0, 0,-5.0f), alfar::vector3::create(0,0.f,0), alfar::vector3::create(0,1,0));
-	alfar::Matrix4x4 projection  = alfar::mat4x4::persp(60.0f*3.14f/180.0f, 640.0f/480.0f, 0.001f, 100.0f);
+	alfar::Matrix4x4 view = alfar::mat4x4::lookAt(alfar::vector3::create(0, 7.f,-15.0f), alfar::vector3::create(0,4.f,0), alfar::vector3::create(0,1,0));
+	alfar::Matrix4x4 projection  = alfar::mat4x4::persp(60.0f*3.14f/180.0f, 640.0f/480.0f, 0.1f, 1000.0f);
 
 	alfar::Matrix4x4 mat[3] = {model,view,projection};
 
@@ -71,6 +84,21 @@ int main(int argc, char** argv)
 	alfodr::renderer::bindBuffer(rend, alfodr::VERTEXDATA, buff);
 	alfodr::renderer::bindBuffer(rend, alfodr::INDEXDATA, idxBuff);
 	alfodr::renderer::bindBuffer(rend, alfodr::CONSTANTDATA, constantBuffer);
+
+
+	
+	SDL_Surface* bmp = IMG_Load("test/trextex.png");
+	SDL_Surface* conv = SDL_ConvertSurfaceFormat(bmp, SDL_PIXELFORMAT_ARGB8888, 0);
+
+	SDL_FreeSurface(bmp);
+	bmp = conv;
+
+	SDL_LockSurface(bmp);
+	ID texture = alfodr::renderer::createTexture(rend, bmp->w, bmp->h, alfodr::TexFormat_BGRA, bmp->pixels);
+	alfodr::renderer::bindTexture(rend, 0, texture);
+	SDL_UnlockSurface(bmp);
+	SDL_FreeSurface(bmp);
+
 
 	//-----
 

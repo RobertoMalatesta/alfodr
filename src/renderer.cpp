@@ -1,15 +1,19 @@
 #include "renderer.h"
 #include "helpers.h"
+#include "shaders.h"
 #include <functions.h>
 #include <memory>
 
 #include <thread>
+#include <queue>
 
 #include <mat4x4.h>
 #include <vector4.h>
 
 using namespace alfodr;
 using namespace alfar;
+
+#define MULTITHREADED_RENDER 0 
 
 
 //--------- INTERNAL FUNCTION
@@ -32,13 +36,13 @@ void fixFunctionVertex(void* vertData, void* constants, VertexOutput* output)
 	output->interpolant2 = alfar::vector4::mul(model, v.normal);
 }
 
-void FixFunctionPixel(VertexOutput* input, void* data, Vector4* output)
+void FixFunctionPixel(VertexOutput* input, Renderer* rend, Vector4* output)
 {
 	alfar::Vector4 normal = input->interpolant2;
 
 	float lum = std::max(0.0f, alfar::vector4::dot(normal, alfar::vector4::normalize(alfar::vector4::create(0.5f, 0.5f, 0, 0))));
-
-	*output = alfar::vector4::add(alfar::vector4::create(0.2f,0.2f,0.2f, 0.2f), alfar::vector4::mul(alfar::vector4::create(1,1,1,1), lum));
+	
+	*output = alfar::vector4::mul(sampler2d::sample(*rend, 0, input->interpolant1), lum*2.0f);
 }
 
 
@@ -48,16 +52,24 @@ void thread_handleInBlock(Renderer& rend, int x, int y, Vector3 v1, Vector3 v2, 
 	Vector4 output;
 	Vector3 bar = vector3::barycentric(v1,v2,v3, vector3::create(x, y, 0));
 
-	v.position = vector4::interpolatedFromBarycentric(vs[0].position, vs[1].position, vs[2].position, bar);
+	v.position = vector4::interpolatedFromBarycentric(vector4::create(v1), vector4::create(v2), vector4::create(v3), bar);
+
+	if(v.position.z < 0.0f || v.position.z > 1.0f || v.position.z * ((uint16)-1) > rend._depthBuffer[y*rend.w + x])
+		return;
+
 	v.interpolant1 = vector4::interpolatedFromBarycentric(vs[0].interpolant1, vs[1].interpolant1, vs[2].interpolant1, bar);
 	v.interpolant2 = vector4::interpolatedFromBarycentric(vs[0].interpolant2, vs[1].interpolant2, vs[2].interpolant2, bar);
 	v.interpolant3 = vector4::interpolatedFromBarycentric(vs[0].interpolant3, vs[1].interpolant3, vs[2].interpolant3, bar);
 
-	rend.boundPixFunc(&v, NULL, &output);
+	rend.boundPixFunc(&v, &rend, &output);
+
+	output = vector4::saturate(output);
 
 	rend._internalBuffer[y * rend.w + x].r = output.x * 0xFF;
 	rend._internalBuffer[y * rend.w + x].g = output.y * 0xFF;
 	rend._internalBuffer[y * rend.w + x].b = output.z * 0xFF;
+
+	rend._depthBuffer[y * rend.w + x] = v.position.z * ((uint16)-1);
 }
 
 void thread_handleOnEdge(Renderer& rend, int minX, int minY, int q, Vector3 v1, Vector3 v2, Vector3 v3, VertexOutput* vs)
@@ -71,12 +83,16 @@ void renderer::initialize(Renderer& rend, int w, int h)
 {
 	rend.w = w;
 	rend.h = h;
-	rend._internalBuffer = (ARGB*)malloc(w*h*sizeof(ARGB));
+	rend._internalBuffer = (BGRA*)malloc(w*h*sizeof(BGRA));
+	rend._depthBuffer = (uint16*)malloc(w*h*sizeof(uint16));
 
-	memset(rend._internalBuffer, 0, w*h*sizeof(ARGB));
+	memset(rend._internalBuffer, 0, w*h*sizeof(BGRA));
+	memset(rend._internalBuffer, 0, w*h*sizeof(uint16));
 
 	rend.boundVertexFunc = fixFunctionVertex;
 	rend.boundPixFunc = FixFunctionPixel;
+
+	rend._runningThreads.store(0);
 
 	buffer::initManager(rend._bufferData);
 }
@@ -99,11 +115,12 @@ void renderer::bindBuffer(Renderer& rend, EBindTarget target, ID buffer)
 	};
 }
 
-void renderer::clear(Renderer& rend, ARGB value)
+void renderer::clear(Renderer& rend, BGRA value)
 {
 	for(int i = 0; i < rend.w*rend.h; ++i)
 	{
 		rend._internalBuffer[i] = value;
+		rend._depthBuffer[i] = -1;
 	}
 }
 
@@ -258,6 +275,34 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
     }
 }
 
+struct thread_DrawInfo
+{
+	Renderer* rend;
+	uint32 stride;
+	uint8* idxData;
+	uint8* vertData;
+	uint8* constData;
+	VertexOutput* outputs;
+};
+
+void thread_Draw(thread_DrawInfo info, uint32 offset, uint32 count)
+{
+	info.rend->_runningThreads++;
+
+	for(int i = offset; i < offset + count; ++i)
+	{
+		uint32 firstVert =	*(((uint32*)info.idxData) + (i * 3));
+		uint32 secondVert = *(((uint32*)info.idxData) + (i * 3 + 1));
+		uint32 thirdVert =	*(((uint32*)info.idxData) + (i * 3 + 2));
+
+		info.rend->boundVertexFunc((info.vertData + info.stride*firstVert), info.constData, info.outputs + 3*i);
+		info.rend->boundVertexFunc((info.vertData + info.stride*secondVert), info.constData, info.outputs + 3*i + 1 );
+		info.rend->boundVertexFunc((info.vertData + info.stride*thirdVert), info.constData, info.outputs + 3*i +2 );
+	}
+
+	info.rend->_runningThreads--;
+}
+
 void renderer::draw(Renderer& rend, const uint32 primitiveCount)
 {
 	VertexOutput* outputs = (VertexOutput*)malloc(primitiveCount * 3 * sizeof(VertexOutput));
@@ -266,35 +311,89 @@ void renderer::draw(Renderer& rend, const uint32 primitiveCount)
 	Buffer& b = rend._bufferData._buffers.lookup(rend._vertexBufferBound);
 	Buffer& idxBuffer = rend._bufferData._buffers.lookup(rend._indexBufferBound);
 
-	void* constantData = NULL;
+	uint8* constantData = NULL;
 	if(rend._constantBufferBound != 0)
 	{
 		Buffer& cdata = rend._bufferData._buffers.lookup(rend._constantBufferBound);
 		constantData = rend._bufferData._bufferMemory + cdata._dataOffset;
 	}
 
+	thread_DrawInfo info;
+	info.constData = constantData;
+	info.idxData = rend._bufferData._bufferMemory + idxBuffer._dataOffset;
+	info.outputs = outputs;
+	info.vertData = rend._bufferData._bufferMemory + (b._dataOffset);
+	info.stride = b.stride;
+	info.rend = &rend;
+	
+#if MULTITHREADED_RENDER 
+	const uint32 nbPerSlices = 1000;
+	int nbSlice = 1 + primitiveCount / nbPerSlices;
+	std::queue<std::thread> _threads;
+	int launched = 0;
+	do
+	{
+		if(rend._runningThreads.load() < 6)
+		{
+			uint32 start = launched * nbPerSlices;
+			uint32 count = std::min(primitiveCount - start, nbPerSlices);
+			_threads.push(std::thread(thread_Draw, info, start, count));
+			++launched;
+		}
+		else
+		{
+			_threads.front().join();
+			_threads.pop();
+		}
+	}
+	while(launched < nbSlice && rend._runningThreads.load() != 0);
+
+	while(_threads.size() != 0)
+	{
+		_threads.front().join();
+		_threads.pop();
+	}
+#else
+	thread_Draw(info, 0, primitiveCount);
+#endif
+	
+
 	for(int i = 0; i < primitiveCount; ++i)
 	{
-		uint32 firstVert = *(uint32*)(rend._bufferData._bufferMemory + idxBuffer._dataOffset + (i * 3) * sizeof(uint32));
-		uint32 secondVert = *(uint32*)(rend._bufferData._bufferMemory + idxBuffer._dataOffset + ((i * 3)+1) * sizeof(uint32));
-		uint32 thirdVert = *(uint32*)(rend._bufferData._bufferMemory + idxBuffer._dataOffset + ((i * 3)+2) * sizeof(uint32));
-
-
-		rend.boundVertexFunc(rend._bufferData._bufferMemory + (b._dataOffset + b.stride*firstVert), constantData, outputs + 3*i);
-		rend.boundVertexFunc(rend._bufferData._bufferMemory + (b._dataOffset + b.stride*secondVert), constantData, outputs + 3*i + 1 );
-		rend.boundVertexFunc(rend._bufferData._bufferMemory + (b._dataOffset + b.stride*thirdVert), constantData, outputs + 3*i +2 );
-
-		/*std::thread first(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*firstVert), constantData, outputs + 3*i);
-		std::thread second(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*secondVert), constantData, outputs + 3*i + 1 );
-		std::thread third(rend.boundVertexFunc, rend._bufferData._bufferMemory + (b._dataOffset + b.stride*thirdVert), constantData, outputs + 3*i +2 );
-
-		first.join();
-		second.join();
-		third.join();*/
-
 		renderer::rasterize(rend, outputs[i*3], outputs[i*3+1], outputs[i*3+2]);
 	}
 
 
 	free(outputs);
+}
+
+//=============================================================
+
+ID renderer::createTexture(Renderer& rend, uint32 width, uint32 height, TextureFormat format, void* data)
+{
+	uint16 stride = 0;
+
+	switch(format)
+	{
+	case TexFormat_BGRA:
+		stride = sizeof(BGRA);
+		break;
+	default:
+		return 0;//unknown format, create nothing
+	}
+
+	Texture2D& tex = rend._textures2D.addAndGet();
+
+	tex._buffer = buffer::create(rend._bufferData, width*height*stride, stride);
+	buffer::upload(rend._bufferData, tex._buffer, data, width*height*stride);
+
+	tex._width = width;
+	tex._height = height;
+
+	return tex.id;
+}
+
+void renderer::bindTexture(Renderer& rend, const uint16 sampler, ID texture)
+{
+	rend.samplers[sampler].texture = texture;
 }

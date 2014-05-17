@@ -12,7 +12,7 @@ using namespace alfodr;
 */
 void buffer::initManager(BufferManager& manager)
 {
-	manager._bufferSize = 1024*1024;
+	manager._bufferSize = 1024*1024*256;
 	manager._bufferMemory = (uint8*)malloc(manager._bufferSize);
 	memset(manager._bufferMemory, 0, manager._bufferSize);
 }
@@ -33,7 +33,7 @@ ID buffer::create(BufferManager& manager, uint32 size, uint16 stride)
 
 	while(offset + size >= manager._bufferSize)
 	{//expand the buffer until we can fit the wanted size
-		uint32 newsize = manager._bufferSize + 1024*1024;
+		uint32 newsize = manager._bufferSize + 1024*1024 * 128;
 		uint8* newmem = (uint8*)malloc(newsize);
 		memcpy(newmem, manager._bufferMemory, manager._bufferSize);
 		memset(newmem + manager._bufferSize, 0, newsize - manager._bufferSize);

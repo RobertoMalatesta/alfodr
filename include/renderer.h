@@ -3,10 +3,15 @@
 #include <types.h>
 #include <math_types.h>
 
+#include <atomic>
+
 #include "buffer.h"
+#include "texture.h"
+#include "shaders.h"
 
 namespace alfodr
 {
+	struct Renderer;
 
 	struct VertexOutput
 	{
@@ -21,17 +26,17 @@ namespace alfodr
 	//the default impl using as simple input
 	typedef void (*vertFunc)(void* vertData, void* constants, VertexOutput* output);
 
-	typedef void(*pixFunc)(VertexOutput* input, void* data,	alfar::Vector4* output);
+	typedef void(*pixFunc)(VertexOutput* input, Renderer* renderer,	alfar::Vector4* output);
 
 
-	union ARGB
+	union BGRA
 	{
 		struct
 		{
-			int8 b,g,r,a;
+			uint8 b,g,r,a;
 		};
 
-		int32 argb;
+		uint32 bgra;
 	};
 
 	enum EBindTarget
@@ -43,18 +48,25 @@ namespace alfodr
 
 	struct Renderer
 	{
-		ARGB* _internalBuffer;
+		BGRA* _internalBuffer;
+		uint16* _depthBuffer;
 		int32 w,h;
 
 		BufferManager _bufferData;
+		ObjectManager<Texture2D, 512> _textures2D;
 
 		//this will be send to the "vertex" function, splitting @ strides
 		ID _vertexBufferBound;
 		ID _indexBufferBound;
 		ID _constantBufferBound;
 
+		Sampler2D samplers[16];
+
 		vertFunc boundVertexFunc;
 		pixFunc boundPixFunc;
+
+
+		std::atomic<int> _runningThreads;
 	};
 
 	namespace renderer
@@ -66,8 +78,14 @@ namespace alfodr
 
 		void draw(Renderer& rend, const uint32 primitiveCount);
 
+		//----------------------------------
+
+		ID createTexture(Renderer& rend, uint32 width, uint32 height, TextureFormat format, void* data);
+
+		void bindTexture(Renderer& rend, const uint16 sampler, ID texture);
+
 		//-----------------------------------
 
-		void clear(Renderer& rend, ARGB value);
+		void clear(Renderer& rend, BGRA value);
 	}
 }

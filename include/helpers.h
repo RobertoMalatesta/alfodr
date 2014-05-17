@@ -14,4 +14,8 @@ namespace alfodr
 
 	//WARNING : Super hacky test function, remember TO FREE THE RETURNED DATA
 	void meshFromFile(const char* file, uint32& nbVert, uint32& nbFace, SimpleVertex* &outVerts, uint32* &outIndices);
+
+	void meshFromMemap(const char* file, uint32& nbVert, uint32& nbFace, SimpleVertex* &outVerts, uint32* &outIndices);
+
+	alfar::Vector4 sampleTexture();
 }
