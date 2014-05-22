@@ -4,6 +4,7 @@
 #include <math_types.h>
 
 #include <atomic>
+#include <thread>
 
 #include "buffer.h"
 #include "texture.h"
@@ -46,6 +47,24 @@ namespace alfodr
 		CONSTANTDATA
 	};
 
+	struct thread_DrawInfo
+	{
+		Renderer* rend;
+		uint32 stride;
+		uint8* idxData;
+		uint8* vertData;
+		uint8* constData;
+		VertexOutput* outputs;
+	};
+
+	struct thread_JobInfo
+	{
+		uint32 offset;
+		uint32 count;
+		std::atomic_bool doingJob;
+		std::atomic_bool alive;
+	};
+
 	struct Renderer
 	{
 		BGRA* _internalBuffer;
@@ -66,7 +85,11 @@ namespace alfodr
 		pixFunc boundPixFunc;
 
 
-		std::atomic<int> _runningThreads;
+		//--- threading stuff
+		static const uint32 kNbThread = 4;
+		std::thread threads[kNbThread];
+		thread_JobInfo threadJobInfo[kNbThread];
+		thread_DrawInfo currentDrawInfo;
 	};
 
 	namespace renderer

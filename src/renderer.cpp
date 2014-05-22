@@ -4,8 +4,7 @@
 #include <functions.h>
 #include <memory>
 
-#include <thread>
-#include <queue>
+#include <vector>
 
 #include <mat4x4.h>
 #include <vector4.h>
@@ -13,25 +12,26 @@
 using namespace alfodr;
 using namespace alfar;
 
-#define MULTITHREADED_RENDER 0 
+#define MULTITHREADED_RENDER 1
 
 
 //--------- INTERNAL FUNCTION
 
 void fixFunctionVertex(void* vertData, void* constants, VertexOutput* output)
 {
-	SimpleVertex v = *((SimpleVertex*)vertData);
-	//alfar::Vector4 v = *((alfar::Vector4*)vertData);
-
 	alfar::Matrix4x4 model = *(((alfar::Matrix4x4*)constants));
 	alfar::Matrix4x4 view = *(((alfar::Matrix4x4*)constants) + 1);
 	alfar::Matrix4x4 projection = *(((alfar::Matrix4x4*)constants) + 2);
 
-	v.pos = alfar::vector4::mul(model, v.pos);
-	v.pos = alfar::vector4::mul(view, v.pos);
-	v.pos = alfar::vector4::mul(projection, v.pos);
+	SimpleVertex v = *((SimpleVertex*)vertData);
+	//alfar::Vector4 v = *((alfar::Vector4*)vertData);
 
-	output->position = v.pos;
+
+	alfar::Vector4 pos = alfar::vector4::mul(model, v.pos);
+	pos = alfar::vector4::mul(view, pos);
+	pos = alfar::vector4::mul(projection, pos);
+
+	output->position = pos;
 	output->interpolant1 = v.uv;
 	output->interpolant2 = alfar::vector4::mul(model, v.normal);
 }
@@ -77,6 +77,31 @@ void thread_handleOnEdge(Renderer& rend, int minX, int minY, int q, Vector3 v1, 
 
 }
 
+void thread_Draw(thread_DrawInfo* info, thread_JobInfo* id)
+{
+	do
+	{
+		if(id->doingJob)
+		{
+			for(int i = id->offset; i < id->offset + id->count; ++i)
+			{
+				uint32 firstVert =	*(((uint32*)info->idxData) + (i * 3));
+				uint32 secondVert = *(((uint32*)info->idxData) + (i * 3 + 1));
+				uint32 thirdVert =	*(((uint32*)info->idxData) + (i * 3 + 2));
+
+				info->rend->boundVertexFunc((info->vertData + info->stride*firstVert) , info->constData, info->outputs + 3*i);
+				info->rend->boundVertexFunc((info->vertData + info->stride*secondVert), info->constData, info->outputs + 3*i + 1 );
+				info->rend->boundVertexFunc((info->vertData + info->stride*thirdVert) , info->constData, info->outputs + 3*i +2 );
+			}
+
+			id->doingJob.store(false);
+		}
+
+		_sleep(0);
+	}
+	while(id->alive);
+}
+
 //---------------------------
 
 void renderer::initialize(Renderer& rend, int w, int h)
@@ -92,7 +117,16 @@ void renderer::initialize(Renderer& rend, int w, int h)
 	rend.boundVertexFunc = fixFunctionVertex;
 	rend.boundPixFunc = FixFunctionPixel;
 
-	rend._runningThreads.store(0);
+#if MULTITHREADED_RENDER
+	//-- launch k thread
+	for(int i = 0; i < Renderer::kNbThread; ++i)
+	{
+		rend.threadJobInfo[i].alive.store(true);
+		rend.threadJobInfo[i].doingJob.store(false);
+
+		rend.threads[i] = std::thread(thread_Draw, &rend.currentDrawInfo, &rend.threadJobInfo[i]);
+	}
+#endif
 
 	buffer::initManager(rend._bufferData);
 }
@@ -275,34 +309,6 @@ void renderer::rasterize(Renderer& rend, const VertexOutput vertex1, const Verte
     }
 }
 
-struct thread_DrawInfo
-{
-	Renderer* rend;
-	uint32 stride;
-	uint8* idxData;
-	uint8* vertData;
-	uint8* constData;
-	VertexOutput* outputs;
-};
-
-void thread_Draw(thread_DrawInfo info, uint32 offset, uint32 count)
-{
-	info.rend->_runningThreads++;
-
-	for(int i = offset; i < offset + count; ++i)
-	{
-		uint32 firstVert =	*(((uint32*)info.idxData) + (i * 3));
-		uint32 secondVert = *(((uint32*)info.idxData) + (i * 3 + 1));
-		uint32 thirdVert =	*(((uint32*)info.idxData) + (i * 3 + 2));
-
-		info.rend->boundVertexFunc((info.vertData + info.stride*firstVert), info.constData, info.outputs + 3*i);
-		info.rend->boundVertexFunc((info.vertData + info.stride*secondVert), info.constData, info.outputs + 3*i + 1 );
-		info.rend->boundVertexFunc((info.vertData + info.stride*thirdVert), info.constData, info.outputs + 3*i +2 );
-	}
-
-	info.rend->_runningThreads--;
-}
-
 void renderer::draw(Renderer& rend, const uint32 primitiveCount)
 {
 	VertexOutput* outputs = (VertexOutput*)malloc(primitiveCount * 3 * sizeof(VertexOutput));
@@ -325,42 +331,60 @@ void renderer::draw(Renderer& rend, const uint32 primitiveCount)
 	info.vertData = rend._bufferData._bufferMemory + (b._dataOffset);
 	info.stride = b.stride;
 	info.rend = &rend;
+
+	rend.currentDrawInfo = info;
 	
 #if MULTITHREADED_RENDER 
-	const uint32 nbPerSlices = 1000;
+
+	const uint32 nbPerSlices = 7000;
 	int nbSlice = 1 + primitiveCount / nbPerSlices;
-	std::queue<std::thread> _threads;
-	int launched = 0;
+	int sliceLaunched = 0;
 	do
 	{
-		if(rend._runningThreads.load() < 6)
+		for(uint32 i = 0; i < Renderer::kNbThread; ++i)
 		{
-			uint32 start = launched * nbPerSlices;
-			uint32 count = std::min(primitiveCount - start, nbPerSlices);
-			_threads.push(std::thread(thread_Draw, info, start, count));
-			++launched;
-		}
-		else
-		{
-			_threads.front().join();
-			_threads.pop();
+			if(!rend.threadJobInfo[i].doingJob)
+			{
+				uint32 start = sliceLaunched * nbPerSlices;
+				uint32 count = std::min(primitiveCount - start, nbPerSlices);
+				rend.threadJobInfo[i].count = count;
+				rend.threadJobInfo[i].offset = start;
+				rend.threadJobInfo[i].doingJob.store(true);
+
+				sliceLaunched += 1;
+				break;
+			}
 		}
 	}
-	while(launched < nbSlice && rend._runningThreads.load() != 0);
+	while(sliceLaunched < nbSlice);
 
-	while(_threads.size() != 0)
+	bool allfinished = false;
+	
+	while(!allfinished)
 	{
-		_threads.front().join();
-		_threads.pop();
+		allfinished = true;
+		for(uint32 i = 0; i <  Renderer::kNbThread; ++i)
+		{
+			if(rend.threadJobInfo[i].doingJob)
+			{
+				allfinished = false;
+			}
+		}
 	}
 #else
-	thread_Draw(info, 0, primitiveCount);
+	thread_JobInfo infothread;
+	infothread.alive.store(false); // exit after one iteration
+	infothread.doingJob.store(true);
+	infothread.count = primitiveCount;
+	infothread.offset = 0;
+
+	thread_Draw(&rend.currentDrawInfo, &infothread);
 #endif
 	
 
 	for(int i = 0; i < primitiveCount; ++i)
 	{
-		renderer::rasterize(rend, outputs[i*3], outputs[i*3+1], outputs[i*3+2]);
+		//renderer::rasterize(rend, outputs[i*3], outputs[i*3+1], outputs[i*3+2]);
 	}
 
 
